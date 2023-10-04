@@ -1,23 +1,43 @@
 import { LoggingWinston } from '@google-cloud/logging-winston';
 import { WinstonModule } from 'nest-winston';
 import * as winston from 'winston';
+import { format } from 'winston';
+import * as util from 'util';
 
 const loggingWinston = new LoggingWinston({
   redirectToStdout: true,
-  useMessageField: true,
+  useMessageField: false,
 });
 
-const Transport = loggingWinston;
-//   process.env.NODE_ENV === 'production'
-//     ? loggingWinston
-//     : new winston.transports.Console({
-//         format: winston.format.simple(),
-//       });
+function transform(info: any) {
+  const args = info[Symbol.for('splat')];
+  if (args) {
+    info.message = util.format(info.message, ...args);
+  }
+  return info;
+}
 
-// Create a Winston logger that streams to Cloud Logging
-// Logs will be written to: "projects/YOUR_PROJECT_ID/logs/winston_log"
-const logger = WinstonModule.createLogger({
-  transports: [Transport],
+function utilFormatter() {
+  return { transform };
+}
+
+const winstonLogger = winston.createLogger({
+  level: 'info',
+  transports: [
+    process.env.GCLOUD
+      ? loggingWinston
+      : new winston.transports.Console({
+          level: 'debug',
+          format: winston.format.combine(
+            format.timestamp({ format: 'HH:mm:ss.SSS' }),
+            utilFormatter(),
+            format.colorize(),
+            format.printf(
+              ({ level, message, label, timestamp }) =>
+                `${timestamp} ${label || '-'} ${level}: ${message}`,
+            ),
+          ),
+        }),
+  ],
 });
-
-export { logger };
+export const logger = WinstonModule.createLogger(winstonLogger);
