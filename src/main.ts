@@ -1,14 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
+import { logger } from './logging';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { TraceExporter } from '@google-cloud/opentelemetry-cloud-trace-exporter';
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { MetricExporter } from '@google-cloud/opentelemetry-cloud-monitoring-exporter';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { logger } from './logging';
-const tracerProvider = new NodeTracerProvider();
+import { WinstonInstrumentation } from '@opentelemetry/instrumentation-winston';
+import {
+  LOGGING_SPAN_KEY,
+  LOGGING_TRACE_KEY,
+} from '@google-cloud/logging-winston';
 
 const sdk = new NodeSDK({
   instrumentations: [
@@ -17,18 +18,21 @@ const sdk = new NodeSDK({
         enabled: false,
       },
     }),
+    new WinstonInstrumentation({
+      enabled: true,
+      logHook: (span, record) => {
+        // remember to change project id if you copy this code
+        record[LOGGING_TRACE_KEY] = `projects/taikuri/traces/${
+          span.spanContext().traceId
+        }`;
+        record[LOGGING_SPAN_KEY] = `projects/taikuri/traces/${
+          span.spanContext().spanId
+        }`;
+      },
+    }),
   ],
-  resource: tracerProvider.resource,
   traceExporter: new TraceExporter(),
-  metricReader: new PeriodicExportingMetricReader({
-    // Export metrics every 10 seconds. 5 seconds is the smallest sample period allowed by
-    // Cloud Monitoring.
-    exportIntervalMillis: 5_000,
-    exporter: new MetricExporter(),
-  }),
 });
-
-sdk.start();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
