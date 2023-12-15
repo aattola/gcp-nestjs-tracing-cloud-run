@@ -13,9 +13,21 @@ import {
 
 const sdk = new NodeSDK({
   instrumentations: [
-    getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-fs': {
         enabled: false,
+      },
+      '@opentelemetry/instrumentation-express': {
+        requestHook: function (span, info) {
+          if (info.request.headers['x-device-os']) {
+            span.setAttributes({
+              'device.os': info.request.headers['x-device-os'],
+              'app.version': info.request.headers['x-app-version'],
+              'app.build': info.request.headers['x-app-build'],
+              'device.os.version':
+                info.request.headers['x-device-os-version'],
+            });
+          }
+        },
       },
     }),
     new WinstonInstrumentation({
